@@ -82,36 +82,54 @@
     if (age < 365) return 45;
     return 30;
   }
-  function actionFor(p, capital, chain) {
+  // One category's pair of actions: the first thing to do on the protocol, and a second,
+  // different thing, so the farm is not a single deposit. A rule matches when its words appear
+  // in the protocol's category; the first match wins, and the last rule is the fallback. The
+  // words are the snapshot's own category names, never a list of protocol names. This is the
+  // same table main.ts runs, so the page's plan and board.json's plan always agree.
+  var CATEGORY_RULES = [
+    { words: ['lend', 'cdp', 'collateral'],
+      action: function (n, c, ch) { return 'Supply $' + c + ' of USDC to ' + n + ' on ' + ch + ' and keep the position open.'; },
+      second: function (n, c, ch) { return 'Borrow $' + Math.max(25, Math.round(c / 2)) + ' against the deposit on ' + n + ' and swap half of it back to USDC on ' + ch + '.'; } },
+    { words: ['dex', 'yield', 'leveraged farm'],
+      action: function (n, c, ch) { return 'Provide $' + c + ' of liquidity to ' + n + "'s main pool on " + ch + ' and keep the position open.'; },
+      second: function (n, c, ch) { return 'Stake the LP receipt from ' + n + ' in its rewards contract on ' + ch + ' so the position earns twice.'; } },
+    { words: ['bridge'],
+      action: function (n, c, ch) { return 'Bridge $' + c + ' of USDC to ' + ch + ' through ' + n + ' and use the bridged funds in its app.'; },
+      second: function (n, c, ch) { return 'Use the bridged funds to open a small position in an app on ' + ch + ' and keep the receipt.'; } },
+    { words: ['staking', 'restak'],
+      action: function (n, c, ch) { return "Stake $" + c + " of the chain's staking asset through " + n + ' and keep the receipt.'; },
+      second: function (n, c, ch) { return 'Restake the staking receipt through ' + n + ' on ' + ch + ' and keep the second receipt.'; } },
+    { words: ['perpetual', 'derivative'],
+      action: function (n, c, ch) { return 'Deposit $' + c + ' of USDC as margin on ' + n + ' and open one small hedge.'; },
+      second: function (n, c, ch) { return 'Close the hedge on ' + n + ' after a week and open a fresh one, so the account shows two trades.'; } },
+    { words: ['prediction'],
+      action: function (n, c, ch) { return 'Fund $' + c + ' and place one market position on ' + n + '.'; },
+      second: function (n, c, ch) { return 'Settle the first market position on ' + n + ' and place a second one with $' + Math.max(25, Math.round(c / 2)) + '.'; } },
+    { words: ['curator', 'allocator'],
+      action: function (n, c, ch) { return 'Deposit $' + c + ' into a ' + n + ' vault on ' + ch + ' and keep the shares.'; },
+      second: function (n, c, ch) { return 'Deposit $' + Math.max(25, Math.round(c / 2)) + ' into a second ' + n + ' vault on ' + ch + ' and keep both share receipts.'; } },
+    { words: ['stable'],
+      action: function (n, c, ch) { return 'Mint or deposit $' + c + ' of the stable asset through ' + n + ' on ' + ch + '.'; },
+      second: function (n, c, ch) { return 'Use the minted stable asset to supply a lending pool on ' + ch + ' through ' + n + '.'; } },
+    { words: ['rwa'],
+      action: function (n, c, ch) { return "Mint $" + c + " of the protocol's yield asset on " + ch + ' and hold it.'; },
+      second: function (n, c, ch) { return 'Use the yield asset as collateral in a lending pool on ' + ch + ' and keep the loan small.'; } },
+    { words: ['insurance'],
+      action: function (n, c, ch) { return 'Buy $' + c + ' of cover from ' + n + ' on ' + ch + ' and keep the policy.'; },
+      second: function (n, c, ch) { return 'Renew the cover from ' + n + ' for a second period on ' + ch + ' before the first ends.'; } },
+    { words: [],
+      action: function (n, c, ch) { return 'Deposit $' + c + ' of USDC into ' + n + ' on ' + ch + ' and keep the position open.'; },
+      second: function (n, c, ch) { return 'Make a second deposit of $' + Math.max(25, Math.round(c / 2)) + ' into ' + n + ' on ' + ch + ' a week after the first.'; } }
+  ];
+  function ruleFor(p) {
     var c = (p.category || '').toLowerCase();
-    var name = p.name;
-    if (c.indexOf('lend') >= 0 || c.indexOf('cdp') >= 0 || c.indexOf('collateral') >= 0) return 'Supply $' + capital + ' of USDC to ' + name + ' on ' + chain + ' and keep the position open.';
-    if (c.indexOf('dex') >= 0 || c.indexOf('yield') >= 0 || c.indexOf('leveraged farm') >= 0) return 'Provide $' + capital + ' of liquidity to ' + name + "'s main pool on " + chain + ' and keep the position open.';
-    if (c.indexOf('bridge') >= 0) return 'Bridge $' + capital + ' of USDC to ' + chain + ' through ' + name + ' and use the bridged funds in its app.';
-    if (c.indexOf('staking') >= 0 || c.indexOf('restak') >= 0) return "Stake $" + capital + " of the chain's staking asset through " + name + ' and keep the receipt.';
-    if (c.indexOf('perpetual') >= 0 || c.indexOf('derivative') >= 0) return 'Deposit $' + capital + ' of USDC as margin on ' + name + ' and open one small hedge.';
-    if (c.indexOf('prediction') >= 0) return 'Fund $' + capital + ' and place one market position on ' + name + '.';
-    if (c.indexOf('curator') >= 0 || c.indexOf('allocator') >= 0) return 'Deposit $' + capital + ' into a ' + name + ' vault on ' + chain + ' and keep the shares.';
-    if (c.indexOf('stable') >= 0) return 'Mint or deposit $' + capital + ' of the stable asset through ' + name + ' on ' + chain + '.';
-    if (c.indexOf('rwa') >= 0) return "Mint $" + capital + " of the protocol's yield asset on " + chain + ' and hold it.';
-    if (c.indexOf('insurance') >= 0) return 'Buy $' + capital + ' of cover from ' + name + ' on ' + chain + ' and keep the policy.';
-    return 'Deposit $' + capital + ' of USDC into ' + name + ' on ' + chain + ' and keep the position open.';
-  }
-  function secondActionFor(p, capital, chain) {
-    var c = (p.category || '').toLowerCase();
-    var name = p.name;
-    var half = Math.max(25, Math.round(capital / 2));
-    if (c.indexOf('lend') >= 0 || c.indexOf('cdp') >= 0 || c.indexOf('collateral') >= 0) return 'Borrow $' + half + ' against the deposit on ' + name + ' and swap half of it back to USDC on ' + chain + '.';
-    if (c.indexOf('dex') >= 0 || c.indexOf('yield') >= 0 || c.indexOf('leveraged farm') >= 0) return 'Stake the LP receipt from ' + name + ' in its rewards contract on ' + chain + ' so the position earns twice.';
-    if (c.indexOf('bridge') >= 0) return 'Use the bridged funds to open a small position in an app on ' + chain + ' and keep the receipt.';
-    if (c.indexOf('staking') >= 0 || c.indexOf('restak') >= 0) return 'Restake the staking receipt through ' + name + ' on ' + chain + ' and keep the second receipt.';
-    if (c.indexOf('perpetual') >= 0 || c.indexOf('derivative') >= 0) return 'Close the hedge on ' + name + ' after a week and open a fresh one, so the account shows two trades.';
-    if (c.indexOf('prediction') >= 0) return 'Settle the first market position on ' + name + ' and place a second one with $' + half + '.';
-    if (c.indexOf('curator') >= 0 || c.indexOf('allocator') >= 0) return 'Deposit $' + half + ' into a second ' + name + ' vault on ' + chain + ' and keep both share receipts.';
-    if (c.indexOf('stable') >= 0) return 'Use the minted stable asset to supply a lending pool on ' + chain + ' through ' + name + '.';
-    if (c.indexOf('rwa') >= 0) return 'Use the yield asset as collateral in a lending pool on ' + chain + ' and keep the loan small.';
-    if (c.indexOf('insurance') >= 0) return 'Renew the cover from ' + name + ' for a second period on ' + chain + ' before the first ends.';
-    return 'Make a second deposit of $' + half + ' into ' + name + ' on ' + chain + ' a week after the first.';
+    for (var i = 0; i < CATEGORY_RULES.length; i++) {
+      var rule = CATEGORY_RULES[i];
+      if (rule.words.length === 0) return rule;
+      for (var j = 0; j < rule.words.length; j++) if (c.indexOf(rule.words[j]) >= 0) return rule;
+    }
+    return CATEGORY_RULES[CATEGORY_RULES.length - 1];
   }
   function stepText(step) {
     var s = step.text + ' Cost: ' + step.cost + '. Time: ' + step.time + '.';
@@ -124,10 +142,12 @@
     var capital = capitalFor(p);
     var hold = holdDaysFor(p.age_days);
     var gas = gasFor(p);
+    var rule = ruleFor(p);
+    var half = Math.max(25, Math.round(capital / 2));
     return [
       { text: 'Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.', cost: 'under $3 of gas for the first transaction', time: '5 minutes' },
-      { text: actionFor(p, capital, chain), cost: '$' + capital + ' of capital and ' + gas, time: '15 minutes to set up' },
-      { text: secondActionFor(p, capital, chain), cost: '$' + Math.max(25, Math.round(capital / 2)) + ' of capital and ' + gas, time: '10 minutes to set up' },
+      { text: rule.action(p.name, capital, chain), cost: '$' + capital + ' of capital and ' + gas, time: '15 minutes to set up' },
+      { text: rule.second(p.name, capital, chain), cost: '$' + half + ' of capital and ' + gas, time: '10 minutes to set up' },
       { text: 'Make one qualifying action each week, such as a deposit, a borrow, a swap or a vote.', cost: gas + ' a week', time: '10 minutes a week' },
       { text: 'Hold the position for at least ' + hold + ' days so the activity is counted in more than one snapshot.', cost: 'the $' + capital + ' stays in the position', time: hold + ' days' },
       { text: "Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.", cost: 'no fee to check, and never pay to claim', time: '10 minutes' },
